@@ -372,7 +372,7 @@ from a stellar binary and the run in which it captures the star by tides
 notebooks' 100 at every stage and one Code B scattering. Its first lines hold
 what can be set, and the environment sets it too:
 
-    CPUS=8 TIME=04:00:00 PARTS_BINARY=32 slurm/submit_runs.sh
+    CPUS=8 PARTS_BINARY=32 slurm/submit_runs.sh
     NUMA=1000 slurm/submit_runs.sh tidal
 
 | setting | meaning | default |
@@ -383,13 +383,15 @@ what can be set, and the environment sets it too:
 | `SBATCH_ACCOUNT` | the account they are charged to | the one SLURM ties you to on that partition |
 | `CPUS` | cores of every task; `node` for all the cores a node has | 64 |
 | `PARTS_BINARY`, `PARTS_TIDAL` | tasks of the job arrays | 16, 2 |
-| `TIME`, `MEM` | time limit of every job; memory of the jobs that hold a whole table | 02:00:00, 16G |
+| `TIME`, `MEM` | time limit of every job; memory of the jobs that hold a whole table | 06:00:00, 16G |
 
 On a full cluster a job that asks for a whole node waits until a node is
 empty, and one with a long time limit is not fitted into gaps. The defaults
-are therefore part of a node and two hours, about eight times what a task of
-the binary run needs with 64 cores. With fewer cores the tasks take longer in
-proportion: raise `TIME`, or cut the stages into more parts.
+are therefore part of a node and six hours. A task of the binary run is
+expected to take a quarter of an hour with 64 cores, which is an estimate
+from other hardware; with fewer cores it takes longer in proportion. A job
+that runs into its limit is killed and its part is run again on the next
+submission.
 
 The first run is about 240 core-hours on Apple M2 cores: 18 million Code A
 histories and 5.6 million Code C histories. The second is a few core-hours:
