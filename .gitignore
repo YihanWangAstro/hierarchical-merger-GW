@@ -1,0 +1,9 @@
+# built programs: `make` recreates them
+bin/
+
+# results of runs: large, and recreated by running the programs
+out/
+
+# system and editor files
+.DS_Store
+__pycache__/
