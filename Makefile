@@ -5,8 +5,8 @@
 
 CXX      ?= c++
 CXXFLAGS ?= -O3 -std=c++17 -pthread -Wall -Wextra
-# On a cluster: make CXX=g++ LDFLAGS="-static-libstdc++ -static-libgcc" keeps the programs
-# from needing the compiler's module when they run.
+# With a compiler from a module, LDFLAGS="-static-libstdc++ -static-libgcc" keeps the programs from
+# needing that module when they run, where the static library is installed.
 LDFLAGS  ?=
 SPACEHUB ?= $(HOME)/Repositories/SpaceHub/src
 

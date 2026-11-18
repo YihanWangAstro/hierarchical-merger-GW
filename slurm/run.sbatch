@@ -12,7 +12,17 @@
 #
 # As a task of a job array it runs one part of a stage: slurm/submit.sh
 # starts such arrays and puts their parts together.
-set -euo pipefail
+set -eo pipefail
+# The modules the programs were built with (slurm/build.sh wrote them down).
+if [ -s slurm/modules.sh ]; then
+    if ! type module > /dev/null 2>&1; then
+        for init in /etc/profile.d/modules.sh /etc/profile.d/lmod.sh /usr/share/Modules/init/bash \
+                    /usr/share/lmod/lmod/init/bash /opt/ohpc/admin/lmod/lmod/init/bash; do
+            [ -r "$init" ] && . "$init" && break
+        done
+    fi
+    . slurm/modules.sh
+fi
 if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
     exec "$@" --part "${SLURM_ARRAY_TASK_ID}/${BHS_PARTS:?BHS_PARTS, the number of parts, is not set}"
 fi

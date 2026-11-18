@@ -7,3 +7,6 @@ out/
 # system and editor files
 .DS_Store
 __pycache__/
+
+# written by slurm/build.sh: the modules of this machine
+slurm/modules.sh

@@ -353,14 +353,53 @@ default) gives the same accuracy in 34 hours instead of four and a half.
 
 ## On a cluster (SLURM)
 
-### Build
+### Build and submit
 
-    git clone https://github.com/YihanWangAstro/SpaceHub.git        # commit 1a0ca3fd or later
-    make CXX=g++ SPACEHUB=$PWD/SpaceHub/src LDFLAGS="-static-libstdc++ -static-libgcc"
+    slurm/build.sh                 # with the g++ that is there
+    slurm/build.sh gcc/12.2.0      # or with a module: `module avail gcc` lists what there is
 
-A C++17 compiler is all it needs. With the two linker flags the programs do
-not depend on the compiler's module when they run. Build once, on the kind of
-node the jobs run on, and use that build for a whole run.
+    slurm/submit_runs.sh           # the two runs: out/binary and out/tidal
+    slurm/submit_runs.sh tidal     # or one of them
+
+`slurm/build.sh` clones SpaceHub into `../SpaceHub` if it is not there (or
+takes `$SPACEHUB`, its `src` directory), builds the three programs and runs a
+test of twelve scatterings. A module it loaded is written to
+`slurm/modules.sh`, and every job loads it again.
+
+`slurm/submit_runs.sh` submits the run in which the black hole takes its star
+from a stellar binary and the run in which it captures the star by tides
+(see [Two ways to capture a star](#two-ways-to-capture-a-star)), both with the
+notebooks' 100 at every stage and one Code B scattering. Its first lines hold
+what can be set, and the environment sets it too:
+
+    SBATCH_PARTITION=cpu SBATCH_ACCOUNT=mine CPUS=48 TIME=06:00:00 slurm/submit_runs.sh
+    NUMA=1000 slurm/submit_runs.sh tidal
+
+| setting | meaning | default |
+|---|---|---|
+| `NUM0`, `NUMA`, `NUMB`, `NUMC` | `--nreal0`, `--nrealA`, `--nrealB`, `--nrealC` | 100, 100, 1, 100 |
+| `PARAMS`, `OUT` | input table of mass pairs and radii; where `binary/` and `tidal/` go | `data/params0_1000.csv`, `out` |
+| `PARTS_BINARY`, `PARTS_TIDAL` | tasks of the job arrays, a node each | 16, 2 |
+| `CPUS` | cores of every task | what every node of the partition has |
+| `TIME`, `MEM` | time limit of every job; memory of the jobs that hold a whole table | 12:00:00, 16G |
+
+The first run is about 240 core-hours on Apple M2 cores: 18 million Code A
+histories and 5.6 million Code C histories. The second is a few core-hours:
+600,000 Code A histories, of which 13% reach the black hole, and some 190
+black-hole binaries. If a job fails, run the script again: what is finished
+is left alone.
+
+By hand, the build is
+
+    git clone https://github.com/YihanWangAstro/SpaceHub.git ../SpaceHub     # commit 1a0ca3fd or later
+    make CXX=g++ SPACEHUB=$PWD/../SpaceHub/src
+
+A C++17 compiler is all it needs. Build once, on the kind of node the jobs
+run on, and use that build for a whole run. With a compiler from a module the
+programs need that module when they run as well, which is what
+`slurm/modules.sh` is for; `LDFLAGS="-static-libstdc++ -static-libgcc"` links
+the compiler's libraries in instead, where the static library is installed
+(`ld: cannot find -lstdc++` says it is not).
 
 ### One node
 
@@ -397,17 +436,8 @@ job waiting for the one before it:
     PARTS=16 CPUS=32 TIME=12:00:00 slurm/submit.sh out/run data/params0_1000.csv \
         --nreal0 200 --nrealA 5 --nrealB 8 --nrealC 20
 
-With `CAPTURE=tidal` the `tc` stage takes the place of Code 0. The two runs
-with the notebooks' 100 at every stage and one Code B scattering, which are
-the defaults:
-
-    PARTS=16 CPUS=32 slurm/submit.sh out/binary data/params0_1000.csv               # the star comes from a stellar binary
-    CAPTURE=tidal PARTS=4 CPUS=32 slurm/submit.sh out/tidal data/params0_1000.csv   # the star is captured by tides
-
-The first is about 240 core-hours on Apple M2 cores: 18 million Code A
-histories and 5.6 million Code C histories. The second is a few core-hours:
-600,000 Code A histories, of which 13% reach the black hole, and some 190
-black-hole binaries.
+With `CAPTURE=tidal` the `tc` stage takes the place of Code 0;
+`slurm/submit_runs.sh` calls this script once for each of the two.
 
 It submits Code 0, an array of `PARTS` tasks for Code A and a job that puts
 them together, Code B, the same pair for Code C, and `lists`. Logs go to
@@ -511,8 +541,10 @@ Needs numpy, matplotlib and scipy.
     include/bhs/io.hpp            CSV files, thread pool
     include/bhs/mathematica.hpp   writing Mathematica lists
     src/scatter_*.cpp             one integrator each
+    slurm/build.sh                builds on a cluster: module, SpaceHub, make, a test
+    slurm/submit_runs.sh          submits the two runs, binary and tidal
+    slurm/submit.sh               submits the stages of one run to SLURM, the long ones as job arrays
     slurm/run.sbatch              batch script: runs a command, as a task of a job array one part of a stage
-    slurm/submit.sh               submits the four stages to SLURM, the long ones as job arrays
     data/                         input tables
     make_params0.py               the input table of Code 0 for a list of mass pairs
     analysis.py                   figures and numbers of a run of the whole pipeline
