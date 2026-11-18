@@ -45,10 +45,34 @@ submit() {
     local options=()
     while [ "$1" != "--" ]; do options+=("$1"); shift; done
     shift
-    after=$(sbatch --parsable ${after:+--dependency=afterok:$after} --job-name="bhs-$job" --time="$TIME" \
-                   --output="$OUT/log/%x-%j.out" "${options[@]}" "$HERE/run.sbatch" "$@")
-    after=${after%%;*}
+    local id
+    if ! id=$(sbatch --parsable ${after:+--dependency=afterok:$after} --job-name="bhs-$job" --time="$TIME" \
+                     --output="$OUT/log/%x-%j.out" "${options[@]}" "$HERE/run.sbatch" "$@"); then
+        refused "$job"
+    fi
+    after=${id%%;*}
     echo "submitted $job as job $after"
+}
+# sbatch said why it refused; say what the cluster would accept, as far as it tells.
+refused() {
+    {
+        echo
+        echo "error: sbatch refused the job $1 (its message is above); the jobs before it stay queued"
+        echo "  asked for: partition ${SBATCH_PARTITION:-(the default)}, account ${SBATCH_ACCOUNT:-(your default)}," \
+             "$CPUS cores, $TIME, $MEM for the jobs that hold a table"
+        if command -v sacctmgr > /dev/null; then
+            echo "  the accounts you may use, with the partitions and QOS they are tied to (empty: any):"
+            echo "    account|partition|qos"
+            sacctmgr -n -P show associations user="$USER" format=account,partition,qos 2> /dev/null | sort -u | sed 's/^/    /'
+        fi
+        if command -v sinfo > /dev/null; then
+            echo "  the partitions, their time limit and the cores of their nodes:"
+            sinfo -h -o "    %P %l %c" 2> /dev/null | sort -u
+        fi
+        echo "  set what fits and submit again, for example:"
+        echo "    SBATCH_ACCOUNT=... SBATCH_PARTITION=... TIME=... slurm/submit_runs.sh"
+    } >&2
+    exit 1
 }
 done_already() { [ -s "$OUT/$1_$NAME.m" ] && echo "$1: its lists are there, left alone"; }
 

@@ -38,6 +38,7 @@ if [ -z "${CPUS:-}" ]; then
     echo "cores per task: $CPUS (what the nodes of ${SBATCH_PARTITION:-the cluster} have: set CPUS for another number)"
 fi
 export CPUS
+echo "partition: ${SBATCH_PARTITION:-the default}; account: ${SBATCH_ACCOUNT:-your default}; time limit $TIME"
 
 [ -x bin/scatter_spacehub ] || { echo "error: bin/scatter_spacehub is not there: run slurm/build.sh first" >&2; exit 1; }
 which=${1:-both}
