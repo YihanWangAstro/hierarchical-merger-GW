@@ -11,7 +11,7 @@
 # Build first: slurm/build.sh. What the runs are and what they ask of the
 # cluster is set below; a value in the environment takes its place, as in
 #
-#   SBATCH_PARTITION=WorkA CPUS=48 slurm/submit_runs.sh
+#   CPUS=8 TIME=04:00:00 PARTS_BINARY=32 slurm/submit_runs.sh
 #
 # Run it again after a failure: what is finished is left alone.
 set -euo pipefail
@@ -37,17 +37,23 @@ if [ -z "${SBATCH_ACCOUNT:-}" ] && command -v sacctmgr > /dev/null; then
                                                   END { if (!found && any != "") print any }' || true)
     [ -n "$account" ] && export SBATCH_ACCOUNT=$account
 fi
-PARTS_BINARY=${PARTS_BINARY:-16}          # tasks of the job arrays of the binary run (a node each)
+CPUS=${CPUS:-64}                          # cores of every task; `node` for all the cores a node has
+PARTS_BINARY=${PARTS_BINARY:-16}          # tasks of the job arrays of the binary run
 PARTS_TIDAL=${PARTS_TIDAL:-2}             # the tidal run is a hundred times smaller
-export TIME=${TIME:-12:00:00}             # time limit of every job
+# Time limit of every job. Short on purpose: the scheduler fits short jobs
+# into gaps in front of long ones. With 64 cores a task of the binary run
+# takes about a quarter of an hour; with fewer cores it takes longer in
+# proportion, and the limit has to grow with it (8 cores: 04:00:00, and
+# PARTS_BINARY=32).
+export TIME=${TIME:-02:00:00}
 export MEM=${MEM:-16G}                    # memory of the jobs that hold a whole table
-# CPUS: cores of every task. Unset, it is the number every node of the partition has.
-if [ -z "${CPUS:-}" ]; then
-    CPUS=$(sinfo -h -o "%c" ${SBATCH_PARTITION:+-p "$SBATCH_PARTITION"} 2> /dev/null | sort -n | head -1 || true)
-    [[ "$CPUS" =~ ^[0-9]+$ ]] || { echo "error: cannot ask sinfo for the cores of a node: set CPUS" >&2; exit 1; }
-    echo "cores per task: $CPUS (what the nodes of ${SBATCH_PARTITION:-the cluster} have: set CPUS for another number)"
+if [ "$CPUS" = node ]; then               # as many as every node of the partition has
+    CPUS=$(sinfo -h -o "%c" -p "$SBATCH_PARTITION" 2> /dev/null | sort -n | head -1 || true)
+    [[ "$CPUS" =~ ^[0-9]+$ ]] || { echo "error: cannot ask sinfo for the cores of a node: set CPUS to a number" >&2; exit 1; }
 fi
+[[ "$CPUS" =~ ^[0-9]+$ ]] || { echo "error: CPUS is a number of cores, or node: not '$CPUS'" >&2; exit 1; }
 export CPUS
+echo "cores per task: $CPUS"
 echo "partition: $SBATCH_PARTITION; account: ${SBATCH_ACCOUNT:-your default}; time limit $TIME"
 
 [ -x bin/scatter_spacehub ] || { echo "error: bin/scatter_spacehub is not there: run slurm/build.sh first" >&2; exit 1; }

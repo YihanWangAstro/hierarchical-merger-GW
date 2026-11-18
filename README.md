@@ -372,7 +372,7 @@ from a stellar binary and the run in which it captures the star by tides
 notebooks' 100 at every stage and one Code B scattering. Its first lines hold
 what can be set, and the environment sets it too:
 
-    SBATCH_PARTITION=WorkA CPUS=48 TIME=06:00:00 slurm/submit_runs.sh
+    CPUS=8 TIME=04:00:00 PARTS_BINARY=32 slurm/submit_runs.sh
     NUMA=1000 slurm/submit_runs.sh tidal
 
 | setting | meaning | default |
@@ -381,9 +381,15 @@ what can be set, and the environment sets it too:
 | `PARAMS`, `OUT` | input table of mass pairs and radii; where `binary/` and `tidal/` go | `data/params0_1000.csv`, `out` |
 | `SBATCH_PARTITION` | the partition the jobs go to | `WorkC` |
 | `SBATCH_ACCOUNT` | the account they are charged to | the one SLURM ties you to on that partition |
-| `PARTS_BINARY`, `PARTS_TIDAL` | tasks of the job arrays, a node each | 16, 2 |
-| `CPUS` | cores of every task | what every node of the partition has |
-| `TIME`, `MEM` | time limit of every job; memory of the jobs that hold a whole table | 12:00:00, 16G |
+| `CPUS` | cores of every task; `node` for all the cores a node has | 64 |
+| `PARTS_BINARY`, `PARTS_TIDAL` | tasks of the job arrays | 16, 2 |
+| `TIME`, `MEM` | time limit of every job; memory of the jobs that hold a whole table | 02:00:00, 16G |
+
+On a full cluster a job that asks for a whole node waits until a node is
+empty, and one with a long time limit is not fitted into gaps. The defaults
+are therefore part of a node and two hours, about eight times what a task of
+the binary run needs with 64 cores. With fewer cores the tasks take longer in
+proportion: raise `TIME`, or cut the stages into more parts.
 
 The first run is about 240 core-hours on Apple M2 cores: 18 million Code A
 histories and 5.6 million Code C histories. The second is a few core-hours:
