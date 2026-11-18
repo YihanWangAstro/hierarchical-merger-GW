@@ -11,7 +11,7 @@
 # Build first: slurm/build.sh. What the runs are and what they ask of the
 # cluster is set below; a value in the environment takes its place, as in
 #
-#   SBATCH_PARTITION=cpu CPUS=48 slurm/submit_runs.sh
+#   SBATCH_PARTITION=WorkA CPUS=48 slurm/submit_runs.sh
 #
 # Run it again after a failure: what is finished is left alone.
 set -euo pipefail
@@ -26,7 +26,17 @@ NUMB=${NUMB:-1}                           # Code B scatterings per binary that r
 NUMC=${NUMC:-100}                         # Code C histories per black-hole binary
 
 # ---- the cluster -----------------------------------------------------------
-# export SBATCH_PARTITION=...  SBATCH_ACCOUNT=...  SBATCH_QOS=...   if yours asks for them
+export SBATCH_PARTITION=${SBATCH_PARTITION:-WorkC}   # the partition the jobs go to
+# The account: SBATCH_ACCOUNT if it is set; otherwise the one SLURM ties you
+# to on that partition, or to on any partition; failing that, your default.
+# (SBATCH_QOS likewise, if your cluster asks for one.)
+if [ -z "${SBATCH_ACCOUNT:-}" ] && command -v sacctmgr > /dev/null; then
+    account=$(sacctmgr -n -P show associations user="$USER" format=account,partition 2> /dev/null |
+              awk -F'|' -v p="$SBATCH_PARTITION" '$2 == p { print $1; found = 1; exit }
+                                                  $2 == "" && any == "" { any = $1 }
+                                                  END { if (!found && any != "") print any }' || true)
+    [ -n "$account" ] && export SBATCH_ACCOUNT=$account
+fi
 PARTS_BINARY=${PARTS_BINARY:-16}          # tasks of the job arrays of the binary run (a node each)
 PARTS_TIDAL=${PARTS_TIDAL:-2}             # the tidal run is a hundred times smaller
 export TIME=${TIME:-12:00:00}             # time limit of every job
@@ -38,7 +48,7 @@ if [ -z "${CPUS:-}" ]; then
     echo "cores per task: $CPUS (what the nodes of ${SBATCH_PARTITION:-the cluster} have: set CPUS for another number)"
 fi
 export CPUS
-echo "partition: ${SBATCH_PARTITION:-the default}; account: ${SBATCH_ACCOUNT:-your default}; time limit $TIME"
+echo "partition: $SBATCH_PARTITION; account: ${SBATCH_ACCOUNT:-your default}; time limit $TIME"
 
 [ -x bin/scatter_spacehub ] || { echo "error: bin/scatter_spacehub is not there: run slurm/build.sh first" >&2; exit 1; }
 which=${1:-both}

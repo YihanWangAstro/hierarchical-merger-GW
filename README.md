@@ -372,13 +372,15 @@ from a stellar binary and the run in which it captures the star by tides
 notebooks' 100 at every stage and one Code B scattering. Its first lines hold
 what can be set, and the environment sets it too:
 
-    SBATCH_PARTITION=cpu SBATCH_ACCOUNT=mine CPUS=48 TIME=06:00:00 slurm/submit_runs.sh
+    SBATCH_PARTITION=WorkA CPUS=48 TIME=06:00:00 slurm/submit_runs.sh
     NUMA=1000 slurm/submit_runs.sh tidal
 
 | setting | meaning | default |
 |---|---|---|
 | `NUM0`, `NUMA`, `NUMB`, `NUMC` | `--nreal0`, `--nrealA`, `--nrealB`, `--nrealC` | 100, 100, 1, 100 |
 | `PARAMS`, `OUT` | input table of mass pairs and radii; where `binary/` and `tidal/` go | `data/params0_1000.csv`, `out` |
+| `SBATCH_PARTITION` | the partition the jobs go to | `WorkC` |
+| `SBATCH_ACCOUNT` | the account they are charged to | the one SLURM ties you to on that partition |
 | `PARTS_BINARY`, `PARTS_TIDAL` | tasks of the job arrays, a node each | 16, 2 |
 | `CPUS` | cores of every task | what every node of the partition has |
 | `TIME`, `MEM` | time limit of every job; memory of the jobs that hold a whole table | 12:00:00, 16G |
