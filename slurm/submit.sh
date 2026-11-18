@@ -89,7 +89,8 @@ in_parts() {
 }
 
 if [ "$CAPTURE" = tidal ]; then
-    whole    tc --in "$PARAMS" "$@"
+    # tc integrates nothing: one core, so that it need not wait for a whole node.
+    done_already tc || submit tc --cpus-per-task=1 --mem=1G -- "$BIN" tc --in "$PARAMS" "$@" --dir "$OUT"
     in_parts codeA --in "$OUT/tc_$NAME.csv" "$@"
 else
     whole    code0 --in "$PARAMS" "$@"
