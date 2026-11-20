@@ -8,6 +8,7 @@
 #pragma once
 
 #include <algorithm>
+#include <iterator>
 
 #include "pipeline.hpp"
 
@@ -43,9 +44,11 @@ struct TidalBinary {
     double pericentreInTidalRadii = 0.0;   // a (1 - e) over the radius inside which the star is pulled apart
 };
 
-/// The stage as the driver runs it: one binary for every mass pair at every
-/// radius of its input, a table with the columns kk, jj, M1, MBH and R_AU
-/// (the input of Code 0 will do: its other columns are not read).
+/// The stage as the driver runs it: one binary for every mass pair of its
+/// input at each of the ten radii of the grid (kGridRadii), as in the
+/// notebook.  The input is a table with the columns kk, M1 and MBH.  That of
+/// Code 0 will do: only the masses are taken from it, not its radii, which
+/// are the outer six of the ten.
 class TidalCapture {
    public:
     using Record = TidalBinary;
@@ -55,31 +58,31 @@ class TidalCapture {
 
     TidalCapture(const std::string& input, const Settings& settings) {
         CsvReader csv(input);
-        const int kk = csv.column("kk"), jj = csv.column("jj"), m1 = csv.column("M1"), mbh = csv.column("MBH"),
-                  radius = csv.column("R_AU");
+        const int kk = csv.column("kk"), m1 = csv.column("M1"), mbh = csv.column("MBH");
+        std::vector<bool> given;   // per mass pair: a row holds it
         while (csv.next()) {
-            const Cell cell{csv.integer(kk), csv.integer(jj), csv.number(m1), csv.number(mbh), csv.number(radius)};
-            if (cell.kk < 1 || cell.jj < 1) fail(input + ": kk and jj count from 1");
-            if (cell.kk > grid_.numMass()) grid_.masses.resize(cell.kk);
-            if (cell.jj > grid_.numRadii()) grid_.radii.resize(cell.jj);
-            grid_.masses[cell.kk - 1] = {cell.m1, cell.mbh};
-            grid_.radii[cell.jj - 1] = cell.radius;
-            cells_.push_back(cell);
+            const int pair = csv.integer(kk);
+            const std::array<double, 2> masses{csv.number(m1), csv.number(mbh)};
+            if (pair < 1) fail(input + ": kk counts from 1");
+            if (pair > grid_.numMass()) grid_.masses.resize(pair), given.resize(pair);
+            if (given[pair - 1] && grid_.masses[pair - 1] != masses)
+                fail(format("%s: two rows give the mass pair kk = %d different masses", input.c_str(), pair));
+            grid_.masses[pair - 1] = masses;
+            given[pair - 1] = true;
         }
-        std::sort(cells_.begin(), cells_.end(),
-                  [&](const Cell& x, const Cell& y) { return grid_.index(x) < grid_.index(y); });
-        bool complete = static_cast<int>(cells_.size()) == grid_.numCells();
-        for (int c = 0; complete && c < grid_.numCells(); ++c) complete = grid_.index(cells_[c]) == c;
-        if (!complete) fail(input + ": needs exactly one row for every mass pair at every radius");
+        if (given.empty()) fail(input + ": no mass pairs");
+        if (std::find(given.begin(), given.end(), false) != given.end())
+            fail(input + ": needs a row for every mass pair, kk = 1, 2, ... without a gap");
         grid_.keepMassPairs(settings.maxMassPairs);
-        cells_.resize(grid_.numCells());
+        grid_.radii.assign(std::begin(kGridRadii), std::end(kGridRadii));
     }
 
     const Grid& grid() const { return grid_; }
-    std::size_t numJobs() const { return cells_.size(); }
+    std::size_t numJobs() const { return static_cast<std::size_t>(grid_.numCells()); }
 
     Record run(std::size_t job, const Scatter&) const {
-        const Cell& cell = cells_[job];
+        const int index = static_cast<int>(job);   // of the cell, in grid order
+        const Cell cell = grid_.cell(index / grid_.numRadii() + 1, index % grid_.numRadii() + 1);
         const CaptureOrbit orbit = tidalCaptureOrbit(cell.m1, clusterAt(cell.radius).starDispersion);
         if (!(orbit.e >= 0.0 && orbit.e < 1.0))
             fail(format("tidal capture: no orbit for M1 = %g at %g pc: this close to the central black hole the "
@@ -112,7 +115,6 @@ class TidalCapture {
 
    private:
     Grid grid_;
-    std::vector<Cell> cells_;   // in grid order
 };
 
 }  // namespace bhs

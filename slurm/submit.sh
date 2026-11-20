@@ -15,7 +15,8 @@
 #   TIME=12:00:00     time limit of every job
 #   MEM=16G           memory of the jobs that hold a whole table (Code 0, Code B, the merges)
 #   BIN=bin/scatter_spacehub
-#   CAPTURE=tidal     the stars are captured by tides: the tc stage in place of Code 0
+#   CAPTURE=tidal     the stars are captured by tides: the tc stage in place of Code 0,
+#                     for the mass pairs of PARAMS at ten radii, whichever radii it holds
 #   SBATCH_PARTITION, SBATCH_ACCOUNT, SBATCH_QOS, ...   read by sbatch itself
 #
 # Run it again with the same arguments after a failure (a task that ran out of
@@ -24,7 +25,7 @@
 set -euo pipefail
 
 if [ $# -lt 2 ]; then
-    sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
 fi
 OUT=$1; PARAMS=$2; shift 2
@@ -74,15 +75,33 @@ refused() {
     } >&2
     exit 1
 }
-done_already() { [ -s "$OUT/$1_$NAME.m" ] && echo "$1: its lists are there, left alone"; }
+# done_already STAGE [its options ...]: true if the lists of the stage are
+# there, and it is left alone.  A directory holds one run: if the table of
+# the stage was made from another input or with other numbers (the program
+# compares its first line with the one it would write), nothing is submitted.
+done_already() {
+    [ -s "$OUT/$1_$NAME.m" ] || return 1
+    local said
+    if ! said=$("$BIN" "$@" --dir "$OUT" --check 2>&1); then
+        {
+            echo "$said"
+            echo
+            echo "error: $OUT holds another run than the one asked for: nothing more is submitted, and"
+            echo "  nothing there is touched (jobs submitted above, if any, stay queued: scancel them)."
+            echo "  Choose another directory for this run, or move that one away."
+        } >&2
+        exit 1
+    fi
+    echo "$1: its lists are there, left alone"
+}
 
 # Code 0 and Code B take minutes: one job each.
 whole() {
-    done_already "$1" || submit "$1" --cpus-per-task="$CPUS" --mem="$MEM" -- "$BIN" "$@" --dir "$OUT"
+    done_already "$@" || submit "$1" --cpus-per-task="$CPUS" --mem="$MEM" -- "$BIN" "$@" --dir "$OUT"
 }
 # Code A and Code C: an array of parts, then a small job that puts them together.
 in_parts() {
-    done_already "$1" && return
+    done_already "$@" && return
     submit "$1" --cpus-per-task="$CPUS" --array="1-$PARTS" --export="ALL,BHS_PARTS=$PARTS" \
            --output="$OUT/log/%x-%A_%a.out" -- "$BIN" "$@" --dir "$OUT"
     submit "$1-merge" --cpus-per-task=1 --mem="$MEM" -- "$BIN" "$@" --dir "$OUT" --merge "$PARTS"
@@ -90,7 +109,8 @@ in_parts() {
 
 if [ "$CAPTURE" = tidal ]; then
     # tc integrates nothing: one core, so that it need not wait for a whole node.
-    done_already tc || submit tc --cpus-per-task=1 --mem=1G -- "$BIN" tc --in "$PARAMS" "$@" --dir "$OUT"
+    done_already tc --in "$PARAMS" "$@" ||
+        submit tc --cpus-per-task=1 --mem=1G -- "$BIN" tc --in "$PARAMS" "$@" --dir "$OUT"
     in_parts codeA --in "$OUT/tc_$NAME.csv" "$@"
 else
     whole    code0 --in "$PARAMS" "$@"

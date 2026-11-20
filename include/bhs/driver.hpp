@@ -34,6 +34,7 @@ struct Options {
     int trials0 = 0, trialsA = 0, trialsC = 0;   // settings.trials of one stage only (0: as the others)
     int part = 0, parts = 0;              // a stage: run only part `part` of `parts` (0: all of it)
     int merge = 0;                        // a stage: put so many parts together instead of running
+    bool check = false;                   // a stage: only say whether its table is the one it would write
 
     int numEncounters = 2000;             // encounters: how many
     int encounter = 0;                    // traj: which encounter of the `encounters` list
@@ -60,7 +61,8 @@ void printUsage(const char* program) {
         "\n"
         "the same with stars captured by tides instead of from binaries\n"
         "  tc           the black hole/star binary tidal capture leaves for every mass\n"
-        "               pair and radius: no encounter, an orbit from two rules\n"
+        "               pair of the input at ten radii, 0.01 to 2 pc: no encounter, an\n"
+        "               orbit from two rules (the radii of the input are not read)\n"
         "  all-tc       tc, codeA, codeB, codeC, then `lists`\n"
         "\n"
         "tools\n"
@@ -82,6 +84,9 @@ void printUsage(const char* program) {
         "                   write them to <stage>_%s.partIofN.csv (for job arrays)\n"
         "  --merge N        a stage: put its N parts together into the table and\n"
         "                   write the lists, instead of running anything\n"
+        "  --check          a stage: run nothing; say whether the table that is there\n"
+        "                   is the one this command would write, from the same input\n"
+        "                   and with the same numbers (exit status 0 if it is)\n"
         "  --nreal N        code0: scatterings per stellar binary; codeA, codeC:\n"
         "                   histories per binary                               [100]\n"
         "  --nreal0 N, --nrealA N, --nrealC N    the same for one stage only\n"
@@ -128,6 +133,7 @@ Options parseOptions(int argc, char** argv) {
             opt.merge = std::stoi(value());
             if (opt.merge < 1) fail("--merge takes the number of parts");
         }
+        else if (flag == "--check") opt.check = true;
         else if (flag == "--nreal") opt.settings.trials = std::stoi(value());
         else if (flag == "--nreal0") opt.trials0 = std::stoi(value());
         else if (flag == "--nrealA") opt.trialsA = std::stoi(value());
@@ -147,6 +153,7 @@ Options parseOptions(int argc, char** argv) {
     if (opt.trials0 < 0 || opt.trialsA < 0 || opt.trialsC < 0) fail("--nreal0, --nrealA and --nrealC must be at least 1");
     if (!(opt.settings.tidalFactor > 0.0)) fail("--tidal must be positive: the tidal check is always applied");
     if (opt.part > 0 && opt.merge > 0) fail("--part runs a part, --merge puts the parts together: not both");
+    if (opt.check && (opt.part > 0 || opt.merge > 0)) fail("--check looks at the whole table: not with --part or --merge");
     return opt;
 }
 
@@ -261,6 +268,50 @@ std::vector<typename Stage::Record> mergeParts(const Stage& stage, const std::st
     return records;
 }
 
+/// The grid a stage works on, without its jobs.  A stage that reads the table
+/// of another works on the grid in the first line of that table, however
+/// many rows follow; one that starts a pipeline makes the grid of its input.
+template <class Stage>
+Grid gridOf(const std::string& input, const Settings& settings) {
+    if (std::string(Stage::previous()).empty()) return Stage(input, settings).grid();
+    return StageReader(input, settings.maxMassPairs).grid();
+}
+
+/// --check: is the table at `path` the one whose first two lines are `head`?
+/// Says so, and how it was made if it was made otherwise; 0 if it is.
+inline int checkTable(const char* stage, const std::string& path, const std::string& head) {
+    std::ifstream in(path);
+    std::string start(head.size(), '\0');
+    if (in && in.read(start.data(), static_cast<std::streamsize>(head.size())) && start == head) {
+        std::printf("%s: %s is the table this command would write\n", stage, path.c_str());
+        return 0;
+    }
+    in.clear();
+    in.seekg(0);
+    std::string first;
+    if (!in || !std::getline(in, first)) {
+        std::printf("%s: there is no table %s\n", stage, path.c_str());
+        return 1;
+    }
+    // A first line is "# how it was made M12S=... Routs=...": say which of the three differ.
+    const std::string asked = head.substr(0, head.find('\n'));
+    auto how = [](const std::string& line) { return line.substr(0, line.find(" M12S=")); };
+    auto value = [](const std::string& line, const std::string& key) {
+        const std::size_t at = line.find(" " + key + "=");
+        if (at == std::string::npos) return std::string();
+        const std::size_t from = at + key.size() + 2, end = line.find(' ', from);
+        return line.substr(from, end == std::string::npos ? end : end - from);
+    };
+    std::printf("%s: %s is not the table this command would write\n", stage, path.c_str());
+    if (how(first) != how(asked))
+        std::printf("  it was made as  %s\n  asked for is    %s\n", how(first).c_str(), how(asked).c_str());
+    if (value(first, "M12S") != value(asked, "M12S")) std::printf("  its mass pairs are not those of the input\n");
+    if (value(first, "Routs") != value(asked, "Routs"))
+        std::printf("  its radii are   %s\n  asked for are   %s\n", value(first, "Routs").c_str(),
+                    value(asked, "Routs").c_str());
+    return 1;
+}
+
 /// Run every job of a stage on the worker threads, or one part of them, or
 /// put the parts together.  The table is written row by row while the run
 /// lasts, the notebook's lists when the whole table is there.
@@ -277,11 +328,13 @@ int runStage(Options opt) {
     const std::string input = !opt.inFile.empty() ? opt.inFile
                             : previous.empty() ? opt.settings.dataDir + "/params0.csv"
                             : defaultFile<Integrator>(opt, previous);
-    const Stage stage(input, opt.settings);
     const std::string made = format("code=%s %s tidal=%g rstar=%g nreal=%d nrealB=%d", Stage::name(),
                                     provenance<Integrator>(opt).c_str(), opt.settings.tidalFactor, kStarRadius,
                                     opt.settings.trials, opt.settings.trialsB);
-    const std::string head = "# " + made + " " + stage.grid().meta() + "\n" + Stage::csvHeader();
+    auto headOn = [&](const Grid& grid) { return "# " + made + " " + grid.meta() + "\n" + Stage::csvHeader(); };
+    if (opt.check) return checkTable(Stage::name(), tablePath, headOn(gridOf<Stage>(input, opt.settings)));
+    const Stage stage(input, opt.settings);
+    const std::string head = headOn(stage.grid());
 
     const std::size_t all = stage.numJobs();
     const std::size_t first = opt.part > 0 ? all * (opt.part - 1) / opt.parts : 0;
@@ -400,7 +453,8 @@ int runLists(const Options& opt) {
 template <class Integrator>
 int runPipeline(Options opt, bool tidalCapture) {
     if (!opt.outFile.empty()) fail("`all` writes its files into one directory: choose it with --dir, not --out");
-    if (opt.part > 0 || opt.merge > 0) fail("--part and --merge are for one stage at a time, not for `all`");
+    if (opt.part > 0 || opt.merge > 0 || opt.check)
+        fail("--part, --merge and --check are for one stage at a time, not for `all`");
     if (tidalCapture) {
         runStage<TidalCapture, Integrator>(opt);
         opt.inFile = defaultFile<Integrator>(opt, TidalCapture::name());   // Code A looks for Code 0's file otherwise
@@ -422,7 +476,7 @@ inline int runProfile(const Options& opt) {
     OutputFile out(opt.outFile.empty() ? opt.dir + "/profile.csv" : opt.outFile);
     out.write("# cluster model; densities in AU^-3, dispersions in AU/yr\n");
     out.write("R_pc,n_star,n_bh,sigma_star,sigma_bh\n");
-    for (double radius : profileRadii()) {
+    for (double radius : kGridRadii) {
         const LocalCluster c = clusterAt(radius);
         out.write(format("%.16g,%.16g,%.16g,%.16g,%.16g\n", c.radiusPc(), c.starDensity, c.bhDensity, c.starDispersion,
                          c.bhDispersion));

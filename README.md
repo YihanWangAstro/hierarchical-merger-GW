@@ -138,15 +138,23 @@ made in two ways, and the rest of the pipeline is the same for both:
 | the star comes from | a stellar binary that the black hole breaks up | a single star that loses its orbital energy to the tide of the black hole |
 | how the orbit is found | a three-body integration for every scattering | two rules, no integration |
 | binaries per mass pair and radius | 30% of `--nreal0` scatterings | one |
-| pericentre of the star | 5.6 tidal radii in the median | 0.97 to 1.28 tidal radii at 0.11 to 2 pc |
+| radii | those of its input table: six, 0.11 to 2 pc | ten, 0.01 to 2 pc |
+| pericentre of the star | 5.6 tidal radii in the median | 0.78 to 1.28 tidal radii at 0.01 to 2 pc |
 
     bin/scatter_spacehub all    --in data/params0_1000.csv --dir out/binary ...   # code0, codeA, codeB, codeC, lists
     bin/scatter_spacehub all-tc --in data/params0_1000.csv --dir out/tidal  ...   # tc,    codeA, codeB, codeC, lists
 
 or stage by stage, `tc` first and then `codeA --in out/tidal/tc_spacehub.csv`.
-`tc` reads the mass pairs and radii of the same input table as `code0` (its
-other columns are not read), so the two runs are on the same grid. With
-`slurm/submit.sh`, set `CAPTURE=tidal`.
+With `slurm/submit.sh`, set `CAPTURE=tidal`.
+
+`tc` takes the mass pairs of the same input table as `code0` (the columns
+`kk`, `M1` and `MBH`; nothing else is read, so a table of these three will
+do) and places each at the ten radii of `TC Code A.nb`, `Routs`, log-spaced
+from 0.01 to 2 pc. The table of `code0` holds the outer six of them, so the
+two runs share their mass pairs and those six radii, under different
+numbers: `jj` 1 to 6 of a `code0` run are `jj` 5 to 10 of a `tc` run. Until
+20 November 2026 `tc` took the radii of its input as well, and a tidal run on
+the table of `code0` was at six radii.
 
 The notebooks hold the tidal-capture orbits as numbers: the lists `A1sS` and
 `E1sS`, 1000 systems at ten radii from 0.01 to 2 pc (also in
@@ -157,9 +165,9 @@ The notebooks hold the tidal-capture orbits as numbers: the lists `A1sS` and
     r_p = 0.010156 AU (M1 / Msun)^(1/3) (sigma yr/AU)^(-2/10.65)
     e   = 1 - r_p / a
 
-These reproduce all 10,000 orbits of the notebooks to 13 digits. The
-constant and the exponent are read off the numbers: the formula itself is
-not in the notebooks.
+These reproduce all 10,000 orbits of the notebooks to 13 digits: `tc` on
+`data/params0_1000.csv` writes them. The constant and the exponent are read
+off the numbers: the formula itself is not in the notebooks.
 
 Checked on 18 November 2026 against `TC Code A.nb`, which runs the first two
 systems at its ten radii with 1000 histories each: the fraction of histories
@@ -169,14 +177,17 @@ does the mean time to the black-hole encounter.
 What follows from the orbits:
 
 - A star captured by tides sits at about one tidal radius, where the tidal
-  check disrupts it. On the notebook's grid half of the binaries start inside
-  the tidal radius (all of them at 0.01 to 0.11 pc), 88% of the histories end
-  with the star disrupted, 62% of those at the first encounter, and 9% reach
-  the black-hole encounter. As in the notebook, the star is tested after an
-  encounter and not before the first.
+  check disrupts it. Half of the binaries start inside the tidal radius (all
+  of them at 0.01 to 0.11 pc), 88% of the histories end with the star
+  disrupted, 62% of those at the first encounter, and 9% reach the black-hole
+  encounter: 0.6% at 0.01 pc, 20% at 2 pc. As in the notebook, the star is
+  tested after an encounter and not before the first.
 - There is no capture experiment, hence no `Num0` and no `f1` in the lists
   file: how often a black hole captures a star by tides has to come from the
   rate of that process, which is not in the notebooks.
+- For the same reason the size of a tidal run is set by `--nrealA` alone, the
+  `NUM` of the notebook: the one binary of a mass pair and radius is always
+  the same, and what can be repeated is its history.
 - The notebook's ends of a history are this program's `fate`: `REACH_BH` 0,
   `TDE_BHS` and `BHS_MERGER` 6, `BHS_LOST` 3, 4 and 5.
 - `analysis.py` expects a Code 0 table and does not yet read a run of
@@ -281,6 +292,18 @@ black-hole mass), so the table can also be written for any list of masses:
 For the 1000 mass pairs of `data/M12S.txt`, which are those of the notebook,
 the formulas give the notebook's table to 15 digits.
 
+`data/params0_1000_2nd.csv` is the same table for a second set of mass
+pairs: the 1000 of `BS Code 0 2nd.nb`, which `TC Code A 2nd.nb` holds too.
+They are other draws from the same distributions, none of them in the first
+set, and the two notebooks differ from those of the first set in the lists
+of numbers alone.
+
+    python nb2txt.py "BS Code 0 2nd.nb" "BS Code 0 2nd.txt"
+    python make_params0.py --notebook "BS Code 0 2nd.txt" -o data/params0_1000_2nd.csv
+
+`tc` on this table writes the 10,000 orbits of `TC Code A 2nd.nb` (`A1sS`,
+`E1sS`) to 13 digits, as it does for the first set.
+
 `data/M1G.txt` holds the masses of the 1G black holes `codeC` draws from
 (`M1G` in the notebook), one per line.
 
@@ -361,6 +384,8 @@ default) gives the same accuracy in 34 hours instead of four and a half.
     slurm/submit_runs.sh           # the two runs: out/binary and out/tidal
     slurm/submit_runs.sh tidal     # or one of them
 
+    PARAMS=data/params0_1000_2nd.csv OUT=out/set2 slurm/submit_runs.sh   # the second set of mass pairs
+
 `slurm/build.sh` clones SpaceHub into `../SpaceHub` if it is not there (or
 takes `$SPACEHUB`, its `src` directory), builds the three programs and runs a
 test of twelve scatterings. A module it loaded is written to
@@ -368,21 +393,27 @@ test of twelve scatterings. A module it loaded is written to
 
 `slurm/submit_runs.sh` submits the run in which the black hole takes its star
 from a stellar binary and the run in which it captures the star by tides
-(see [Two ways to capture a star](#two-ways-to-capture-a-star)), both with the
-notebooks' 100 at every stage and one Code B scattering. Its first lines hold
-what can be set, and the environment sets it too:
+(see [Two ways to capture a star](#two-ways-to-capture-a-star)): the first
+with the notebooks' 100 at every stage and one Code B scattering, the second
+with 10,000 Code A histories in place of 100. The tidal run has no Code 0
+whose scatterings could be counted up: tides leave one binary per mass pair
+and radius, always the same, where Code 0 leaves some thirty. With 100
+histories of it the run ends with some 200 black-hole binaries, spread over
+10,000 cells. Its first lines hold what can be set, and the environment sets
+it too:
 
     CPUS=8 PARTS_BINARY=32 slurm/submit_runs.sh
-    NUMA=1000 slurm/submit_runs.sh tidal
+    NUMA_TIDAL=1000 OUT=out/small slurm/submit_runs.sh tidal
 
 | setting | meaning | default |
 |---|---|---|
 | `NUM0`, `NUMA`, `NUMB`, `NUMC` | `--nreal0`, `--nrealA`, `--nrealB`, `--nrealC` | 100, 100, 1, 100 |
-| `PARAMS`, `OUT` | input table of mass pairs and radii; where `binary/` and `tidal/` go | `data/params0_1000.csv`, `out` |
+| `NUMA_TIDAL` | `--nrealA` of the tidal run, in place of `NUMA` | 10000 |
+| `PARAMS`, `OUT` | input table: the mass pairs of both runs and the radii of the binary run (the tidal run is at ten radii whatever the table holds); where `binary/` and `tidal/` go | `data/params0_1000.csv`, `out` |
 | `SBATCH_PARTITION` | the partition the jobs go to | `WorkC` |
 | `SBATCH_ACCOUNT` | the account they are charged to | the one SLURM ties you to on that partition |
 | `CPUS` | cores of every task; `node` for all the cores a node has | 64 |
-| `PARTS_BINARY`, `PARTS_TIDAL` | tasks of the job arrays | 16, 2 |
+| `PARTS_BINARY`, `PARTS_TIDAL` | tasks of the job arrays | 16, 16 |
 | `TIME`, `MEM` | time limit of every job; memory of the jobs that hold a whole table | 06:00:00, 16G |
 
 On a full cluster a job that asks for a whole node waits until a node is
@@ -394,10 +425,23 @@ that runs into its limit is killed and its part is run again on the next
 submission.
 
 The first run is about 240 core-hours on Apple M2 cores: 18 million Code A
-histories and 5.6 million Code C histories. The second is a few core-hours:
-600,000 Code A histories, of which 13% reach the black hole, and some 190
-black-hole binaries. If a job fails, run the script again: what is finished
-is left alone.
+histories and 5.6 million Code C histories. The second is about 160: 100
+million Code A histories at ten radii, of which 9% reach the black hole,
+some 20,000 black-hole binaries and 2 million Code C histories. These are
+scaled from two runs, a thousandth and a five-hundredth of the size, which
+left 21 and 43 black-hole binaries: the 20,000 is good to a quarter. The
+Code A table of the tidal run has 100 million rows: 16 GB, as much again in
+parts until they are deleted, and 11 GB of memory in the job that puts the
+parts together, of the 16 GB it asks for. If a job fails, run the script
+again: what is finished is left alone.
+
+A directory holds one run. For another input table or other numbers `OUT`
+names another, as for the second set above; a run submitted on top of a
+different one is refused (see [Many nodes](#many-nodes)). So is the tidal run
+on top of one made before 20 November 2026, at six radii and with 100
+histories: move that one away first. The script also refuses to go on with
+programs built before the sources last changed: run `slurm/build.sh` again
+after a `git pull`.
 
 By hand, the build is
 
@@ -455,6 +499,12 @@ them together, Code B, the same pair for Code C, and `lists`. Logs go to
 it never start: submit again with the same arguments. Stages whose lists are
 there are left alone, and so are the parts that are complete. The part files
 can be deleted once their stage is put together.
+
+A directory holds one run. Before a stage is left alone its table is looked
+at (`--check`: the first line of a table says how it was made, and from which
+mass pairs and radii): if it was made from another input table or with other
+numbers, the script says how, submits nothing more and touches nothing.
+Choose another directory for the new run, or move the old one away.
 
 ### What carries over from one machine to another
 

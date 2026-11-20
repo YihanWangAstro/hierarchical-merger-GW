@@ -2,7 +2,6 @@
 #pragma once
 
 #include <cmath>
-#include <vector>
 
 #include "constants.hpp"
 
@@ -31,14 +30,6 @@ inline LocalCluster clusterAt(double radius) {
     auto dispersion = [&](double slope) { return std::sqrt(kG * kSmbhMass / (radius * (1.0 + slope))); };
     return {radius, density(kCuspSlope), kBhNumberFraction * density(kBhCuspSlope), dispersion(kCuspSlope),
             dispersion(kBhCuspSlope)};
-}
-
-/// The log-spaced radii [AU] tabulated by the `profile` command.
-inline std::vector<double> profileRadii() {
-    const double logInner = std::log(kInnerRadius * kParsec), logOuter = std::log(kOuterRadius * kParsec);
-    std::vector<double> radii(kNumRadii);
-    for (int i = 0; i < kNumRadii; ++i) radii[i] = std::exp(logInner + (logOuter - logInner) * i / (kNumRadii - 1));
-    return radii;
 }
 
 /// Mean mass of the field (1G) black holes, dN/dm ~ m^-2.

@@ -23,10 +23,15 @@ inline constexpr double kMinFieldBhMass = 5.0;          // 1G black holes: dN/dm
 inline constexpr double kMaxFieldBhMass = 45.0;         //   between these two masses
 inline constexpr double kRemnantMassFraction = 0.95;    // of two merging black holes, left in the remnant
 
-// ---- radial grid of the `profile` command ------------------------------------
-inline constexpr int kNumRadii = 10;                    // log-spaced
-inline constexpr double kInnerRadius = 0.01;            // [pc]
-inline constexpr double kOuterRadius = 2.0;             // [pc]
+// ---- radial grid -------------------------------------------------------------
+// Ten radii [AU], log-spaced from 0.01 to 2 pc: Routs of the notebooks,
+// Exp[Subdivide[Log[0.01 PC], Log[2 PC], 9]], as the numbers Mathematica gives.
+// They are written out because exp and log round differently from one
+// machine to the next.  Tidal capture (tc) is worked out at all ten; the
+// outer six are the radii of Code 0, as its input table holds them.
+inline constexpr double kGridRadii[] = {2062.648,           3716.166119662855,  6695.224114308461, 12062.438679378582,
+                                        21732.271304079746, 39153.908143096894, 70541.56932921596, 127091.09356956737,
+                                        228973.44386154477, 412529.59999999986};
 
 // ---- three-body encounters (lengths in units of the binary's a) ------------
 inline constexpr double kStartTidalRadii = 10.0;        // the incoming body starts this many tidal radii of the
